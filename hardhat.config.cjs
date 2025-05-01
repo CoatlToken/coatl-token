@@ -1,10 +1,10 @@
 require("@nomiclabs/hardhat-ethers");
 require("@nomicfoundation/hardhat-verify");
-require("dotenv").config();
+const dotenv = require("dotenv");
+dotenv.config();
 
-const { PRIVATE_KEY_MAIN, PRIVATE_KEY_TEST1, INFURA_API_KEY, ETHERSCAN_API_KEY } = process.env;
+const { PRIVATE_KEY_MAIN, PRIVATE_KEY_TEST1, INFURA_API_KEY, ETHERSCAN_API_KEY, DEFENDER_API_KEY, DEFENDER_SECRET_KEY } = process.env;
 
-/** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
     solidity: "0.8.28",
     networks: {
@@ -18,6 +18,10 @@ module.exports = {
         },
     },
     etherscan: {
-        apiKey: ETHERSCAN_API_KEY
-    }
+        apiKey: ETHERSCAN_API_KEY,
+    },
+    defender: {
+        apiKey: DEFENDER_API_KEY,
+        apiSecret: DEFENDER_SECRET_KEY,
+    },
 };

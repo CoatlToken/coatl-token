@@ -1,5 +1,6 @@
-const { ethers } = require("hardhat");
-const { expect } = require("chai");
+import pkg from 'hardhat';
+const { ethers } = pkg;
+import { expect } from "chai";
 
 describe("Coatl", function () {
   let Coatl, coatl, owner, addr1, addr2;
@@ -45,8 +46,8 @@ describe("Coatl", function () {
     expect(await coatl.paused()).to.equal(false);
 
     await coatl.transfer(addr1.address, ethers.utils.parseEther("100"));
-    addr1Balance = await coatl.balanceOf(addr1.address);
-    expect(addr1Balance.toString()).to.equal(ethers.utils.parseEther("100").toString());
+    const addr2Balance = await coatl.balanceOf(addr1.address);
+    expect(addr2Balance.toString()).to.equal(ethers.utils.parseEther("100").toString());
   });
 
   it("Should allow to burn tokens", async function () {
