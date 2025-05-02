@@ -24,6 +24,8 @@ contract Coatl is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
     error ZeroAddressNotAllowed();
     error SenderBlacklisted(address sender);
     error RecipientBlacklisted(address recipient);
+    error UnauthorizedCaller();
+    error BurnFeeTooHigh(uint256 fee);
 
     // White and Blacklist mapping
     mapping(address account => uint8 status) private _listStatus; // 0 = none, 1 = whitelisted, 2 = blacklisted
@@ -31,15 +33,35 @@ contract Coatl is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
     // Burn fee exceptions mapping
     mapping(address account => bool isExempt) private _burnFeeExceptions;
 
+    // MultiSig wallet address
+    address public multiSigWallet;
+
     // Constants for readability
     uint8 private constant WHITELISTED = 1;
     uint8 private constant BLACKLISTED = 2;
 
     // Transfer commission (percentage)
+    /**
+     * @notice The percentage fee applied to token transfers.
+     * @dev The fee is deducted from the transfer amount and sent to the fee receiver.
+     * @return The current transfer fee percentage (e.g., 1 for 1%).
+     */
     uint256 public transferFee = 1; // 1% commission
+
+    // Address to receive the commission
+    /**
+     * @notice The address that receives the transfer fee.
+     * @dev By default, this is set to the multi-signature wallet address.
+     * @return The current fee receiver address.
+     */
     address public feeReceiver; // Address to receive the commission
 
     // Burn fee (percentage)
+    /**
+     * @notice The percentage fee applied when tokens are burned.
+     * @dev The fee is deducted from the burn amount and sent to the fee receiver.
+     * @return The current burn fee percentage (e.g., 1 for 1%).
+     */
     uint256 public burnFee = 1; // 1% burn fee
 
     // Events
@@ -88,23 +110,52 @@ contract Coatl is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
     event BurnWithFee(address indexed sender, uint256 burnAmount, uint256 feeAmount);
 
     /**
+     * @dev Emitted when the MultiSig wallet address is updated.
+     */
+    event MultiSigWalletUpdated(address indexed newWallet);
+
+    /**
      * @notice Constructor to initialize the Coatl token.
      * @param initialSupply The initial supply of tokens to mint.
+     * @param _multiSigWallet The address of the MultiSig wallet.
      */
-    constructor(uint256 initialSupply) ERC20("Coatl", "CTL") Ownable(msg.sender) {
-        feeReceiver = msg.sender; // Set the contract owner as the default fee receiver
-        _mint(msg.sender, initialSupply); // Mint initial supply to the contract owner
-        emit ContractInitialized(msg.sender, initialSupply); // Emit event
+    constructor(uint256 initialSupply, address _multiSigWallet) ERC20("Coatl", "CTL") Ownable(msg.sender) {
+        require(_multiSigWallet != address(0), "Invalid MultiSig wallet address");
+        multiSigWallet = _multiSigWallet;
+        feeReceiver = multiSigWallet; // Set the multi-signature wallet as the default fee receiver
+        _mint(multiSigWallet, initialSupply); // Mint initial supply to the multi-signature wallet
+        emit ContractInitialized(multiSigWallet, initialSupply); // Emit event
+    }
+
+    /**
+     * @notice Updates the MultiSig wallet address.
+     * @dev Only callable by the current MultiSig wallet.
+     * @param newWallet The new MultiSig wallet address.
+     * @custom:throws UnauthorizedCaller If the caller is not the current MultiSig wallet.
+     * @custom:throws ZeroAddressNotAllowed If the new wallet address is the zero address.
+     */
+    function updateMultiSigWallet(address newWallet) external onlyMultiSig {
+        require(newWallet != address(0), "Invalid MultiSig wallet address");
+        multiSigWallet = newWallet;
+        emit MultiSigWalletUpdated(newWallet);
+    }
+
+    /**
+     * @dev Modifier to restrict access to the MultiSig wallet.
+     */
+    modifier onlyMultiSig() {
+        if (msg.sender != multiSigWallet) revert UnauthorizedCaller();
+        _;
     }
 
     // Whitelist functions
 
     /**
      * @notice Adds an account to the whitelist.
-     * @dev Only callable by the contract owner.
+     * @dev Only callable by the MultiSig wallet.
      * @param account The address to be added to the whitelist.
      */
-    function addWhitelist(address account) external onlyOwner {
+    function addWhitelist(address account) external onlyMultiSig {
         if (_listStatus[account] == BLACKLISTED)
             revert AccountBlacklisted(account);
         if (_listStatus[account] == WHITELISTED)
@@ -116,10 +167,10 @@ contract Coatl is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
 
     /**
      * @notice Removes an account from the whitelist.
-     * @dev Only callable by the contract owner.
+     * @dev Only callable by the MultiSig wallet.
      * @param account The address to be removed from the whitelist.
      */
-    function removeWhitelist(address account) external onlyOwner {
+    function removeWhitelist(address account) external onlyMultiSig {
         if (_listStatus[account] != WHITELISTED)
             revert AccountNotWhitelisted(account);
 
@@ -140,10 +191,10 @@ contract Coatl is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
 
     /**
      * @notice Adds an account to the blacklist.
-     * @dev Only callable by the contract owner.
+     * @dev Only callable by the MultiSig wallet.
      * @param account The address to be added to the blacklist.
      */
-    function addBlacklist(address account) external onlyOwner {
+    function addBlacklist(address account) external onlyMultiSig {
         if (_listStatus[account] == BLACKLISTED)
             revert AccountAlreadyBlacklisted(account);
 
@@ -159,10 +210,10 @@ contract Coatl is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
 
     /**
      * @notice Removes an account from the blacklist.
-     * @dev Only callable by the contract owner.
+     * @dev Only callable by the MultiSig wallet.
      * @param account The address to be removed from the blacklist.
      */
-    function removeBlacklist(address account) external onlyOwner {
+    function removeBlacklist(address account) external onlyMultiSig {
         if (_listStatus[account] != BLACKLISTED)
             revert AccountNotBlacklisted(account);
 
@@ -216,6 +267,7 @@ contract Coatl is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
      * @notice Updates the transfer fee percentage.
      * @dev Only callable by the contract owner. The fee is capped at 5%.
      * @param newFee The new transfer fee percentage.
+     * @custom:throws FeeTooHigh If the new fee exceeds 5%.
      */
     function updateFee(uint256 newFee) external onlyOwner {
         if (newFee > 5) revert FeeTooHigh(newFee);
@@ -234,9 +286,10 @@ contract Coatl is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
      * @notice Updates the burn fee percentage.
      * @dev Only callable by the contract owner. The fee is capped at 5%.
      * @param newFee The new burn fee percentage.
+     * @custom:throws BurnFeeTooHigh If the new fee exceeds 5%.
      */
     function updateBurnFee(uint256 newFee) external onlyOwner {
-        require(newFee <= 5, "Coatl: fee must be less than or equal to 5");
+        if (newFee > 5) revert BurnFeeTooHigh(newFee);
 
         if (newFee == burnFee) {
             return;
@@ -248,10 +301,11 @@ contract Coatl is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
 
     /**
      * @notice Updates the fee receiver address.
-     * @dev Only callable by the contract owner.
+     * @dev Only callable by the MultiSig wallet.
      * @param newReceiver The new fee receiver address.
+     * @custom:throws ZeroAddressNotAllowed If the new receiver address is the zero address.
      */
-    function updateFeeReceiver(address newReceiver) external onlyOwner {
+    function updateFeeReceiver(address newReceiver) external onlyMultiSig {
         if (newReceiver == address(0)) revert ZeroAddressNotAllowed();
 
         feeReceiver = newReceiver;
@@ -298,6 +352,7 @@ contract Coatl is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
      * @notice Burns a specified amount of tokens.
      * @dev Applies a burn fee unless the sender is exempt.
      * @param amount The amount of tokens to burn.
+     * @custom:throws SenderBlacklisted If the sender is blacklisted.
      */
     function burn(uint256 amount) public override {
         address sender = _msgSender(); // Use _msgSender() for consistency
@@ -320,17 +375,17 @@ contract Coatl is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
 
     /**
      * @notice Pauses all token transfers.
-     * @dev Only callable by the contract owner.
+     * @dev Only callable by the MultiSig wallet.
      */
-    function pause() public onlyOwner {
+    function pause() public onlyMultiSig {
         _pause();
     }
 
     /**
      * @notice Unpauses all token transfers.
-     * @dev Only callable by the contract owner.
+     * @dev Only callable by the MultiSig wallet.
      */
-    function unpause() public onlyOwner {
+    function unpause() public onlyMultiSig {
         _unpause();
     }
 }

@@ -1,44 +1,60 @@
-const { ethers } = require("hardhat");
+import pkg from 'hardhat';
+const { ethers } = pkg;
 
 async function main() {
     const [deployer] = await ethers.getSigners();
     console.log("Deploying contract with account:", deployer.address);
 
-    const initialSupply = ethers.utils.parseUnits("875000000", 18); // 1M tokens
+    // Define initial supply and multi-signature wallet address
+    const initialSupply = ethers.utils.parseUnits("875000000", 18); // 875M tokens
+    const multiSigWallet = "0x2C3F8ca14707BbbbbdFe815F810F22CC7B1b8C34"; // Replace with actual multi-signature wallet address
+
+    if (!ethers.utils.isAddress(multiSigWallet)) {
+        throw new Error("Invalid multi-signature wallet address");
+    }
+
+    console.log("Initial supply:", initialSupply.toString());
+    console.log("Multi-signature wallet address:", multiSigWallet);
+
     const Token = await ethers.getContractFactory("Coatl");
 
-    // Estimate the gas cost to deploy the contract
-    const deploymentTransaction = Token.getDeployTransaction(initialSupply);
-    const gasEstimate = await ethers.provider.estimateGas(deploymentTransaction); // Estima el gas
-    console.log("Gas estimate for deploying contract:", gasEstimate.toString());
-
     let deployed = false;
+    const gasPriceThreshold = ethers.utils.parseUnits("19.6", "gwei"); // Configurable gas price threshold
 
-    // while (!deployed) {
-    //     // Obtain the current gas price from the network
-    //     const gasPrice = await ethers.provider.getGasPrice();
-    //     console.log("Current Gas Price:", ethers.utils.formatUnits(gasPrice, 'gwei'), "gwei");
-    
-    //     // Calculate the total gas cost for the deployment
-    //     const totalGasCost = gasEstimate.mul(gasPrice);  // Costo total en wei
-    //     const totalGasCostInEth = ethers.utils.formatEther(totalGasCost);  // Costo total en ETH
-    //     console.log("Total Gas Cost for deployment (in ETH):", totalGasCostInEth);
+    while (!deployed) {
+        try {
+            // Obtain the current gas price from the network
+            const gasPrice = await ethers.provider.getGasPrice();
+            console.log("Current Gas Price:", ethers.utils.formatUnits(gasPrice, "gwei"), "gwei");
 
-    //     // check if gas price is less than 19 gwei
-    //     if (gasPrice.lt(ethers.utils.parseUnits("19.6", "gwei"))) {
-    //         console.log("Gas price is less than 19.6 GWEI. Deploying contract...");
-    //         const token = await Token.deploy(initialSupply);
-    //         console.log("Token deployed to:", token.address);
-    //         deployed = true;
-    //     }
-    //     else {
-    //         console.log("Gas prioce is greater than 19 GWEI. Waiting for gas price to decrease...");
-    //         await new Promise(resolve => setTimeout(resolve, 5000)); // Wait for 1 minute
-    //     }
-    // }
-};
+            // Estimate the gas cost for deployment
+            const deploymentTransaction = Token.getDeployTransaction(initialSupply, multiSigWallet);
+            const gasEstimate = await ethers.provider.estimateGas(deploymentTransaction);
+            const totalGasCost = gasEstimate.mul(gasPrice);
+            const totalGasCostInEth = ethers.utils.formatEther(totalGasCost);
+
+            console.log("Gas estimate for deployment:", gasEstimate.toString());
+            console.log("Total Gas Cost for deployment (in ETH):", totalGasCostInEth);
+
+            // Check if gas price is below the threshold
+            if (gasPrice.lt(gasPriceThreshold)) {
+                console.log("Gas price is below threshold. Deploying contract...");
+                const token = await Token.deploy(initialSupply, multiSigWallet, { gasPrice });
+                await token.deployed();
+                console.log("Token deployed to:", token.address);
+                deployed = true;
+            } else {
+                console.log("Gas price is above threshold. Waiting for gas price to decrease...");
+                await new Promise((resolve) => setTimeout(resolve, 60000)); // Wait for 1 minute
+            }
+        } catch (error) {
+            console.error("Error during deployment:", error.message);
+            console.log("Retrying deployment...");
+        }
+    }
+}
 
 main().catch((error) => {
-    console.error(error);
+    console.error("Deployment failed:", error.message);
     process.exitCode = 1;
 });
