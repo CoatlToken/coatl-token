@@ -151,7 +151,7 @@ describe("Coatl", function () {
         expect(addr1Balance.toString()).to.equal(ethers.utils.parseEther("100").toString());
     }
     catch (err) {
-        expect(err.message).to.equal("VM Exception while processing transaction: reverted with reason string 'Coatl: sender is blacklisted'");
+        expect(err.message).to.contains("VM Exception while processing transaction: reverted with custom error 'SenderBlacklisted");
     }
   });
 
@@ -165,7 +165,7 @@ describe("Coatl", function () {
         expect(addr1Balance.toString()).to.equal(ethers.utils.parseEther("100").toString());
     }
     catch (err) {
-        expect(err.message).to.equal("VM Exception while processing transaction: reverted with reason string 'Coatl: recipient is blacklisted'");
+        expect(err.message).to.contains("VM Exception while processing transaction: reverted with custom error 'RecipientBlacklisted");
     }
   });
 
