@@ -4,16 +4,15 @@ pragma solidity 0.8.28;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC20Burnable} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
-import {ERC20Pausable} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title Coatl Token
  * @dev ERC20 token with burn, pause, and fee mechanisms.
  * Includes whitelist and blacklist functionality.
- * @custom:security-contact security@coatlproject.com
+ * @custom:security-contact security@coatl.one
  */
-contract Coatl is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
+contract Coatl is ERC20, ERC20Burnable, Ownable {
     // Custom Errors
     error AccountBlacklisted(address account);
     error AccountAlreadyWhitelisted(address account);
@@ -324,7 +323,7 @@ contract Coatl is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
         address sender,
         address recipient,
         uint256 amount
-    ) internal override(ERC20, ERC20Pausable) {
+    ) internal override(ERC20) {
         if (_listStatus[sender] == BLACKLISTED)
             revert SenderBlacklisted(sender);
         if (_listStatus[recipient] == BLACKLISTED)
@@ -371,21 +370,5 @@ contract Coatl is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
             super._update(sender, feeReceiver, feeAmount);
             emit BurnWithFee(sender, burnAmount, feeAmount); // Emit event
         }
-    }
-
-    /**
-     * @notice Pauses all token transfers.
-     * @dev Only callable by the MultiSig wallet.
-     */
-    function pause() public onlyMultiSig {
-        _pause();
-    }
-
-    /**
-     * @notice Unpauses all token transfers.
-     * @dev Only callable by the MultiSig wallet.
-     */
-    function unpause() public onlyMultiSig {
-        _unpause();
     }
 }

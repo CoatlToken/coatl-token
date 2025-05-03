@@ -73,31 +73,6 @@ describe("Coatl", function () {
     expect(ownerBalance.toString()).to.equal(ethers.utils.parseEther("400").toString()); // Owner now has 500 - 100 = 400 tokens
   });
 
-  it("Should not allow transfers when the contract is paused", async function () {
-    // Pause the contract
-    await coatl.connect(owner).pause();
-
-    // Attempt to transfer tokens while paused
-    try {
-      await coatl.connect(owner).transfer(addr1.address, ethers.utils.parseEther("100"));
-    } catch (err) {
-      expect(err.message).to.contains("VM Exception while processing transaction: reverted with custom error 'EnforcedPause()'");
-    }
-
-    // Unpause the contract
-    await coatl.connect(owner).unpause();
-
-    // Transfer tokens successfully after unpausing
-    const feePercentage = await coatl.transferFee();
-    const transferAmount = ethers.utils.parseEther("100");
-    const fee = transferAmount.mul(feePercentage).div(100);
-    const netTransferAmount = transferAmount.sub(fee);
-
-    await coatl.connect(owner).transfer(addr1.address, transferAmount);
-    const addr1Balance = await coatl.balanceOf(addr1.address);
-    expect(addr1Balance.toString()).to.equal(ethers.utils.parseEther("200").add(netTransferAmount).toString()); // addr1 now has 200 + netTransferAmount
-  });
-
   it("Should allow transfers only if the sender and recipient are not blacklisted", async function () {
     // MultiSig wallet adds addr1 to the blacklist
     await coatl.connect(multiSigWallet).addBlacklist(addr1.address);
