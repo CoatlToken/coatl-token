@@ -3,18 +3,18 @@ const { ethers } = pkg;
 import { expect } from "chai";
 
 describe("Coatl", function () {
-  let Coatl, coatl, owner, addr1, addr2, multiSigWallet;
+  let Coatl, coatl, owner, addr1, addr2, multiSigWallet, feeReceiver;
 
   beforeEach(async function () {
     // Reset contract state
     await ethers.provider.send("hardhat_reset", []);
 
     // Get signers
-    [owner, addr1, addr2, multiSigWallet] = await ethers.getSigners();
+    [owner, addr1, addr2, multiSigWallet, feeReceiver] = await ethers.getSigners();
 
     // Deploy the contract
     Coatl = await ethers.getContractFactory("Coatl");
-    coatl = await Coatl.deploy(ethers.utils.parseUnits("875000000", 18), multiSigWallet.address); // Initial supply minted to multiSigWallet
+    coatl = await Coatl.deploy(ethers.utils.parseUnits("875000000", 18), multiSigWallet.address, feeReceiver.address); // Initial supply minted to multiSigWallet
     await coatl.deployed();
 
     // Distribute tokens from the multi-signature wallet to other accounts for testing
@@ -35,9 +35,13 @@ describe("Coatl", function () {
     expect(multiSigBalance.toString()).to.equal(expectedBalance.toString());
   });
 
-  it("Should check that the owner has the transferred supply", async function () {
+  it("Should check that the owner has the transferred supply less the fee", async function () {
     const ownerBalance = await coatl.balanceOf(owner.address);
-    expect(ownerBalance.toString()).to.equal(ethers.utils.parseEther("500").toString()); // Owner should have 500 tokens
+    const feePercentage = await coatl.transferFee();
+    const transferAmount = ethers.utils.parseEther("500");
+    const fee = transferAmount.mul(feePercentage).div(100);
+    const netTransferAmount = transferAmount.sub(fee);
+    expect(ownerBalance.toString()).to.equal(netTransferAmount.toString()); // Owner should have 500 tokens
   });
 
   it("Should transfer tokens between accounts", async function () {
@@ -51,26 +55,37 @@ describe("Coatl", function () {
     const fee = transferAmount.mul(feePercentage).div(100); // Fee based on the current percentage
     const netTransferAmount = transferAmount.sub(fee); // Amount received by addr1 after deducting the fee
 
-    // Check the multi-signature wallet's balance before the transfer
-    const multiSigBalanceBefore = await coatl.balanceOf(multiSigWallet.address);
+    // Check the fee receiver's balance before the transfer
+    const feeReceiverBalance = await coatl.balanceOf(feeReceiver.address);
+
+    const addr1BalanceBefore = await coatl.balanceOf(addr1.address);
 
     // Perform the transfer
     await coatl.connect(owner).transfer(addr1.address, transferAmount);
 
     // Check the recipient's balance
     const addr1Balance = await coatl.balanceOf(addr1.address);
-    expect(addr1Balance.toString()).to.equal(ethers.utils.parseEther("200").add(netTransferAmount).toString()); // addr1 starts with 200 tokens
+    expect(addr1Balance.toString()).to.equal(addr1BalanceBefore.add(netTransferAmount).toString()); // addr1 starts with 200 tokens
 
     // Check the multi-signature wallet's balance after the transfer
-    const multiSigBalanceAfter = await coatl.balanceOf(multiSigWallet.address);
-    const expectedMultiSigBalance = multiSigBalanceBefore.add(fee); // MultiSig wallet receives the fee
-    expect(multiSigBalanceAfter.toString()).to.equal(expectedMultiSigBalance.toString());
+    const feeReceiverBalanceAfter = await coatl.balanceOf(feeReceiver.address);
+    const expectedFeeReceiverBalance = feeReceiverBalance.add(fee); // MultiSig wallet receives the fee
+    expect(feeReceiverBalanceAfter.toString()).to.equal(expectedFeeReceiverBalance.toString());
   });
 
   it("Should allow to burn tokens", async function () {
-    await coatl.connect(owner).burn(ethers.utils.parseEther("100"));
+    const feeReceiverBalance = await coatl.balanceOf(feeReceiver.address);
+    const ownerBalanceBefore = await coatl.balanceOf(owner.address);
+    const burnFee = await coatl.burnFee(); // Assume this returns the burn fee as a percentage (e.g., 1 for 1%)
+    const burnAmount = ethers.utils.parseEther("100");
+    const fee = burnAmount.mul(burnFee).div(100); // Fee based on the current percentage
+    await coatl.connect(owner).burn(burnAmount);
     const ownerBalance = await coatl.balanceOf(owner.address);
-    expect(ownerBalance.toString()).to.equal(ethers.utils.parseEther("400").toString()); // Owner now has 500 - 100 = 400 tokens
+    expect(ownerBalance.toString()).to.equal(ownerBalanceBefore.sub(burnAmount).toString()); // Owner now has 500 - 100 = 400 tokens
+    // check fee receiver balance
+    const feeReceiverBalanceAfter = await coatl.balanceOf(feeReceiver.address);
+    const expectedFeeReceiverBalance = feeReceiverBalance.add(fee); // Fee receiver receives the fee
+    expect(feeReceiverBalanceAfter.toString()).to.equal(expectedFeeReceiverBalance.toString());
   });
 
   it("Should allow transfers only if the sender and recipient are not blacklisted", async function () {
@@ -94,10 +109,11 @@ describe("Coatl", function () {
     const transferAmount = ethers.utils.parseEther("100");
     const fee = transferAmount.mul(feePercentage).div(100);
     const netTransferAmount = transferAmount.sub(fee);
+    const addr1BalanceBefore = await coatl.balanceOf(addr1.address);
 
     await coatl.connect(owner).transfer(addr1.address, transferAmount);
     const addr1Balance = await coatl.balanceOf(addr1.address);
-    expect(addr1Balance.toString()).to.equal(ethers.utils.parseEther("200").add(netTransferAmount).toString()); // addr1 now has 200 + netTransferAmount
+    expect(addr1Balance.toString()).to.equal(addr1BalanceBefore.add(netTransferAmount).toString()); // addr1 now has 200 + netTransferAmount
   });
 
   it("Should allow the multi-signature wallet to update the multi-signature wallet address", async function () {
@@ -151,19 +167,20 @@ describe("Coatl", function () {
     const netTransferAmount = transferAmount.sub(fee); // Amount received by addr1 after deducting the fee
 
     // Check the multi-signature wallet's balance before the transfer
-    const multiSigBalanceBefore = await coatl.balanceOf(multiSigWallet.address);
+    const feeReceiverBalanceABefore = await coatl.balanceOf(feeReceiver.address);
+    const addr1BalanceBefore = await coatl.balanceOf(addr1.address);
 
     // Perform the transfer
     await coatl.connect(owner).transfer(addr1.address, transferAmount);
 
     // Check the recipient's balance
     const addr1Balance = await coatl.balanceOf(addr1.address);
-    expect(addr1Balance.toString()).to.equal(ethers.utils.parseEther("200").add(netTransferAmount).toString()); // addr1 now has 200 + netTransferAmount
+    expect(addr1Balance.toString()).to.equal(addr1BalanceBefore.add(netTransferAmount).toString()); // addr1 now has 200 + netTransferAmount
 
-    // Check the multi-signature wallet's balance after the transfer
-    const multiSigBalanceAfter = await coatl.balanceOf(multiSigWallet.address);
-    const expectedMultiSigBalance = multiSigBalanceBefore.add(fee); // MultiSig wallet receives the fee
-    expect(multiSigBalanceAfter.toString()).to.equal(expectedMultiSigBalance.toString());
+    // Check the fee receiver's balance after the transfer
+    const feeReceiverBalanceAfter = await coatl.balanceOf(feeReceiver.address);
+    const expectedFeeReceiverBalance = feeReceiverBalanceABefore.add(fee); // Fee receiver receives the fee
+    expect(feeReceiverBalanceAfter.toString()).to.equal(expectedFeeReceiverBalance.toString());
   });
 
   it("Should emit events for blacklist and whitelist updates", async function () {

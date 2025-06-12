@@ -8,8 +8,9 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title Coatl Token
- * @dev ERC20 token with burn, pause, and fee mechanisms.
+ * @dev ERC20 token with burn and fee mechanisms.
  * Includes whitelist and blacklist functionality.
+ * Main token for COatl One developments
  * @custom:security-contact security@coatl.one
  */
 contract Coatl is ERC20, ERC20Burnable, Ownable {
@@ -43,14 +44,15 @@ contract Coatl is ERC20, ERC20Burnable, Ownable {
     /**
      * @notice The percentage fee applied to token transfers.
      * @dev The fee is deducted from the transfer amount and sent to the fee receiver.
+     * fees are used for environment and regional or local community development.
      * @return The current transfer fee percentage (e.g., 1 for 1%).
      */
-    uint256 public transferFee = 1; // 1% commission
+    uint256 public transferFee = 0; // start with 0% commission
 
     // Address to receive the commission
     /**
      * @notice The address that receives the transfer fee.
-     * @dev By default, this is set to the multi-signature wallet address.
+     * @dev By default, this is set to to a multi-signature wallet address dedicated to the fees.
      * @return The current fee receiver address.
      */
     address public feeReceiver; // Address to receive the commission
@@ -61,7 +63,7 @@ contract Coatl is ERC20, ERC20Burnable, Ownable {
      * @dev The fee is deducted from the burn amount and sent to the fee receiver.
      * @return The current burn fee percentage (e.g., 1 for 1%).
      */
-    uint256 public burnFee = 1; // 1% burn fee
+    uint256 public burnFee = 2; // 2% burn fee
 
     // Events
     /**
@@ -116,13 +118,31 @@ contract Coatl is ERC20, ERC20Burnable, Ownable {
     /**
      * @notice Constructor to initialize the Coatl token.
      * @param initialSupply The initial supply of tokens to mint.
-     * @param _multiSigWallet The address of the MultiSig wallet.
+     * @param _multiSigWallet The address of the MultiSig wallet for administrative purposes.
+     * @param _feeReceiver The address of the MultiSig wallet for receiving fees.
+     * @param initialWhitelistedAccounts An array of accounts to be whitelisted during deployment.
      */
-    constructor(uint256 initialSupply, address _multiSigWallet) ERC20("Coatl", "CTL") Ownable(msg.sender) {
-        require(_multiSigWallet != address(0), "Invalid MultiSig wallet address");
+    constructor(
+        uint256 initialSupply,
+        address _multiSigWallet,
+        address _feeReceiver,
+        address[] memory initialWhitelistedAccounts
+    ) ERC20("Coatl", "CTL") Ownable(msg.sender) {
+        if (_multiSigWallet == address(0)) revert ZeroAddressNotAllowed();
+        if (_feeReceiver == address(0)) revert ZeroAddressNotAllowed();
+
         multiSigWallet = _multiSigWallet;
-        feeReceiver = multiSigWallet; // Set the multi-signature wallet as the default fee receiver
+        feeReceiver = _feeReceiver; // Set the fee receiver to the specified address
         _mint(multiSigWallet, initialSupply); // Mint initial supply to the multi-signature wallet
+
+        // Add initial accounts to the whitelist
+        for (uint256 i = 0; i < initialWhitelistedAccounts.length; i++) {
+            address account = initialWhitelistedAccounts[i];
+            if (account == address(0)) revert ZeroAddressNotAllowed();
+            _listStatus[account] = WHITELISTED;
+            emit ListStatusUpdated(account, true, false); // Emit event for each whitelisted account
+        }
+
         emit ContractInitialized(multiSigWallet, initialSupply); // Emit event
     }
 
@@ -152,6 +172,7 @@ contract Coatl is ERC20, ERC20Burnable, Ownable {
     /**
      * @notice Adds an account to the whitelist.
      * @dev Only callable by the MultiSig wallet.
+     * whitelisted accounts are excluded from transfer fees.
      * @param account The address to be added to the whitelist.
      */
     function addWhitelist(address account) external onlyMultiSig {

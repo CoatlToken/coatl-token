@@ -2,9 +2,6 @@ import pkg from 'hardhat';
 const { ethers } = pkg;
 
 async function main() {
-    const [deployer] = await ethers.getSigners();
-    console.log("Deploying contract with account:", deployer.address);
-
     // Define initial supply and multi-signature wallet address
     const initialSupply = ethers.utils.parseUnits("875000000", 18); // 875M tokens
     const multiSigWallet = "0x2C3F8ca14707BbbbbdFe815F810F22CC7B1b8C34"; // Replace with actual multi-signature wallet address
@@ -41,11 +38,6 @@ async function main() {
 
         console.log("Gas estimate for deployment:", gasEstimate.toString());
         console.log("Total Gas Cost for deployment (in ETH):", totalGasCostInEth);
-
-        const token = await Token.deploy(initialSupply, multiSigWallet, feeReceiver, initialWhitelistedAccounts, { gasPrice });
-        await token.deployed();
-        console.log("Token deployed to:", token.address);
-        deployed = true;
     } catch (error) {
         console.error("Error during deployment:", error.message);
         console.log("Retrying deployment...");
