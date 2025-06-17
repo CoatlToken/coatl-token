@@ -1,0 +1,19 @@
+import pkg from "hardhat";
+const { ethers } = pkg;
+
+async function main() {
+    // Replace with your deployed Coatl token address
+    const coatlTokenAddress = "0xe9F7988625A37Dacf425e6062f4F73B56ffc6177";
+
+    // Deploy the vesting contract
+    const Vesting = await ethers.getContractFactory("CoatlVesting");
+    const vesting = await Vesting.deploy(coatlTokenAddress);
+
+    await vesting.deployed();
+    console.log("CoatlVesting deployed to:", vesting.address);
+}
+
+main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+});
