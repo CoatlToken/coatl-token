@@ -1,0 +1,34 @@
+import pkg from "hardhat";
+const { run } = pkg;
+
+async function main() {
+    const ICO_ADDRESS = "0x12aDc58955cc96c065d06e2dC9e842d7D2Ed3011";
+
+    const TOKEN_ADDRESS = "0x709F06D83fcD7b9C8aa0A126D3Dd794575d3c149";
+    const PRICE_FEED_ADDRESS = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"; // Chainlink ETH/USD price feed address
+    const SOFT_CAP = ethers.utils.parseEther("150000000"); // 150 million tokens (18 decimals)
+    const HARD_CAP = ethers.utils.parseEther("350000000"); // 350 million tokens (18 decimals)
+    const PROJECT_WALLET = "0x2C3F8ca14707BbbbbdFe815F810F22CC7B1b8C34";
+    const START = 1750206891; // Replace with your actual start timestamp
+    const END = 1757982891;   // Replace with your actual end timestamp
+
+    await run("verify:verify", {
+        address: ICO_ADDRESS,
+        constructorArguments: [
+            TOKEN_ADDRESS,
+            PRICE_FEED_ADDRESS,
+            SOFT_CAP,
+            HARD_CAP,
+            START,
+            END,
+            PROJECT_WALLET
+        ],
+    });
+
+    console.log("Verification submitted for:", ICO_ADDRESS);
+}
+
+main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+});

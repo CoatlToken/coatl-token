@@ -218,6 +218,99 @@ describe("ICO", function () {
         expect(finalBalance.sub(initialBalance)).to.equal(unsoldTokens);
     });
 
+    it("ICOStarted event should be emitted on the first buy", async function () {
+        await ethers.provider.send("evm_increaseTime", [15]);
+        await ethers.provider.send("evm_mine");
+
+        // expect ICOSTarted event to be emitted on the first buy
+        await expect(
+            ico.connect(user1).buyTokens({ value: ethers.utils.parseEther("1") })
+        ).to.emit(ico, "ICOStarted");
+    });
+
+    it("ICOStarted event should be emitted on the first buy with correct parameters", async function () {
+        await ethers.provider.send("evm_increaseTime", [15]);
+        await ethers.provider.send("evm_mine");
+
+        const start = await ico.start();
+        const end = await ico.end();
+        const softCap = await ico.softCap();
+        const hardCap = await ico.hardCap();
+
+        await expect(
+            ico.connect(user1).buyTokens({ value: ethers.utils.parseEther("1") })
+        ).to.emit(ico, "ICOStarted")
+         .withArgs(start, end, softCap, hardCap);
+    });
+
+    it("should only allow the owner to finalize", async function () {
+        await ethers.provider.send("evm_increaseTime", [15]);
+        await ethers.provider.send("evm_mine");
+        await ico.connect(user1).buyTokens({ value: ethers.utils.parseEther("1") });
+        await ethers.provider.send("evm_increaseTime", [10 + 90 * 24 * 60 * 60]);
+        await ethers.provider.send("evm_mine");
+
+        // Non-owner should be reverted
+        await expect(
+            ico.connect(user1).finalize()
+        ).to.be.revertedWith("OwnableUnauthorizedAccount");
+
+        // If unsodltokens havent been recovered, finalize is not allowed
+        await expect(
+            ico.connect(owner).finalize()
+        ).to.be.revertedWith("UnsoldTokensNotRecovered");
+
+        // Recover unsold tokens by other tham the onwer
+        await expect(
+            ico.connect(user1).recoverUnsoldTokens(owner.address)
+        ).to.be.revertedWith("OwnableUnauthorizedAccount");
+
+        // Owner should be able to recover unsold tokens
+        await ico.connect(owner).recoverUnsoldTokens(owner.address);
+
+        // Now owner can finalize
+        await expect(
+            ico.connect(owner).finalize()
+        ).to.emit(ico, "Finalized");
+    });
+
+    it("Should only allow owenr to do an emergency withrdraw", async function () {
+        await ethers.provider.send("evm_increaseTime", [15]);
+        await ethers.provider.send("evm_mine");
+
+        // Buy some tokens
+        await ico.connect(user1).buyTokens({ value: ethers.utils.parseEther("1") });
+
+        // Non-owner should be reverted
+        await expect(
+            ico.connect(user1).emergencyWithdraw(projectWallet.address)
+        ).to.be.revertedWith("OwnableUnauthorizedAccount");
+
+        // Owner should be able to do an emergency withdraw
+        const initialBalance = await ethers.provider.getBalance(projectWallet.address);
+        const icoBalance = await ethers.provider.getBalance(ico.address);
+
+        // Expect revert when ICO has not been finalized
+        await expect(
+            ico.connect(owner).emergencyWithdraw(projectWallet.address)
+        ).to.be.revertedWith("NotFinalized");
+
+        // Fast forward to end
+        await ethers.provider.send("evm_increaseTime", [10 + 90 * 24 * 60 * 60]);
+        await ethers.provider.send("evm_mine");
+
+        // recover unsold tokens
+        await ico.connect(owner).recoverUnsoldTokens(owner.address);
+
+        // finalize the ICO
+        await ico.connect(owner).finalize();
+
+        // Now emergency withdraw should work
+        await ico.connect(owner).emergencyWithdraw(projectWallet.address);
+
+        const finalBalance = await ethers.provider.getBalance(projectWallet.address);
+        expect(finalBalance.sub(initialBalance)).to.equal(icoBalance);
+    });
 });
 
 async function buyUpToCap(ico, capTokens, priceFeed, signers) {

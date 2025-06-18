@@ -66,6 +66,7 @@ contract ICO is Ownable, ReentrancyGuard {
     error NoEthSent();
     error ZeroTokens();
     error TokenTransferFailed();
+    error EthTransferFailed();
     error SoftcapNotReached();
     error ICOnotEnded();
     error SoftcapReachedAlready();
@@ -82,6 +83,7 @@ contract ICO is Ownable, ReentrancyGuard {
     error AlreadyFinalized();
     error NotFinalized();
     error NoEthToWithdraw();
+    error UnsoldTokensNotRecovered();
 
     // --- Constructor ---
     /**
@@ -269,7 +271,7 @@ contract ICO is Ownable, ReentrancyGuard {
     function finalize() external onlyOwner {
         if (!icoEnded()) revert ICOnotEnded();
         if (finalized) revert AlreadyFinalized();
-        if (token.balanceOf(address(this)) > 0) revert NoUnsoldTokens();
+        if (token.balanceOf(address(this)) > 0) revert UnsoldTokensNotRecovered();
         finalized = true;
         emit Finalized();
     }
@@ -284,7 +286,7 @@ contract ICO is Ownable, ReentrancyGuard {
         uint256 amount = address(this).balance;
         if (amount == 0) revert NoEthToWithdraw();
         (bool sent, ) = to.call{value: amount}("");
-        if (!sent) revert TokenTransferFailed();
+        if (!sent) revert EthTransferFailed();
         emit EmergencyWithdraw(to, amount);
     }
 }
